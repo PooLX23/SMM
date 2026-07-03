@@ -25,6 +25,8 @@ import {
   Tabs,
 } from "@mui/material";
 import AppShell from "../components/AppShell";
+import PostalCityFields from "../components/PostalCityFields";
+import { isPostalCodeValid } from "../utils/postalAddress";
 import { useMsal } from "@azure/msal-react";
 import { apiGetJson, apiPostJson } from "../api/apiClient";
 
@@ -1046,7 +1048,7 @@ function CreateShipmentDialog({
   }, [open]);
 
   const emailOk = recipientEmail.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
-  const postalOk = recipientPostal.length === 0 || /^\d{2}-\d{3}$/.test(recipientPostal);
+  const postalOk = isPostalCodeValid(recipientCountry, recipientPostal);
   const vinOk = vin.length === 0 || vin.trim().length === 17;
 
   const canSubmit =
@@ -1126,32 +1128,19 @@ function CreateShipmentDialog({
             required
           />
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Kod pocztowy"
-              value={recipientPostal}
-              onChange={(e) => setRecipientPostal(e.target.value)}
-              required
-              error={!postalOk}
-              helperText={!postalOk ? "Format: 00-000" : " "}
-              fullWidth
-            />
-            <TextField
-              label="Miasto"
-              value={recipientCity}
-              onChange={(e) => setRecipientCity(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Kraj"
-              value={recipientCountry}
-              onChange={(e) => setRecipientCountry(e.target.value)}
-              inputProps={{ maxLength: 2 }}
-              required
-              fullWidth
-            />
-          </Stack>
+          <PostalCityFields
+            country={recipientCountry}
+            onCountryChange={(value) => {
+              setRecipientCountry(value);
+              setRecipientPostal("");
+              setRecipientCity("");
+            }}
+            postalCode={recipientPostal}
+            onPostalCodeChange={setRecipientPostal}
+            city={recipientCity}
+            onCityChange={setRecipientCity}
+            postalCodeValid={postalOk}
+          />
 
           <TextField
             label="Zawartość przesyłki"
