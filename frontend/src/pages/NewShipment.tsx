@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Button, Card, CardContent, Stack, TextField, Typography } from "@mui/material";
 import { useMsal } from "@azure/msal-react";
 import AppShell from "../components/AppShell";
+import PostalCityFields from "../components/PostalCityFields";
+import { isPostalCodeValid } from "../utils/postalAddress";
 import { apiPostJson } from "../api/apiClient";
 
 export default function NewShipment() {
@@ -29,8 +31,8 @@ export default function NewShipment() {
     [recipientEmail]
   );
   const postalOk = useMemo(
-    () => recipientPostal.length === 0 || /^\d{2}-\d{3}$/.test(recipientPostal),
-    [recipientPostal]
+    () => isPostalCodeValid(recipientCountry, recipientPostal),
+    [recipientCountry, recipientPostal]
   );
   const vinOk = useMemo(
     () => vin.length === 0 || vin.trim().length === 17,
@@ -109,32 +111,19 @@ export default function NewShipment() {
               required
             />
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField
-                label="Kod pocztowy"
-                value={recipientPostal}
-                onChange={(e) => setRecipientPostal(e.target.value)}
-                required
-                error={!postalOk}
-                helperText={!postalOk ? "Format: 00-000" : " "}
-                fullWidth
-              />
-              <TextField
-                label="Miasto"
-                value={recipientCity}
-                onChange={(e) => setRecipientCity(e.target.value)}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Kraj"
-                value={recipientCountry}
-                onChange={(e) => setRecipientCountry(e.target.value)}
-                inputProps={{ maxLength: 2 }}
-                required
-                fullWidth
-              />
-            </Stack>
+            <PostalCityFields
+              country={recipientCountry}
+              onCountryChange={(value) => {
+                setRecipientCountry(value);
+                setRecipientPostal("");
+                setRecipientCity("");
+              }}
+              postalCode={recipientPostal}
+              onPostalCodeChange={setRecipientPostal}
+              city={recipientCity}
+              onCityChange={setRecipientCity}
+              postalCodeValid={postalOk}
+            />
 
             <TextField
               label="Zawartość przesyłki"

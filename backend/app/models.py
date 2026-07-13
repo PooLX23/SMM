@@ -41,6 +41,27 @@ class Carrier(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class AddressBookEntry(Base):
+    __tablename__ = "address_book_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    recipient_name: Mapped[str] = mapped_column(String(200))
+    recipient_email: Mapped[str] = mapped_column(String(254), index=True)
+    recipient_phone: Mapped[str] = mapped_column(String(50))
+    recipient_street: Mapped[str] = mapped_column(String(200))
+    recipient_country: Mapped[str] = mapped_column(String(2), default="PL", index=True)
+    recipient_postal_code: Mapped[str] = mapped_column(String(32), index=True)
+    recipient_city: Mapped[str] = mapped_column(String(120), index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_address_book_name_city", "recipient_name", "recipient_city"),
+    )
+
+
 class Counter(Base):
     __tablename__ = "counters"
     key: Mapped[str] = mapped_column(String(32), primary_key=True)

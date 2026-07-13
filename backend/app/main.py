@@ -16,11 +16,12 @@ from openpyxl.utils import get_column_letter
 from .deps import get_db, get_current_user, CurrentUser, require_reception
 from .models import (
     Shipment, ShipmentStatus, Direction, ShipmentEvent, Carrier, CostCenter,
-    IncomingShipment
+    IncomingShipment, AddressBookEntry
 )
 from .schemas import (
     ShipmentCreate, ShipmentOut, ShipmentShip, CostCenterOut, SimpleDictItem,
-    IncomingShipmentCreate, IncomingShipmentOut
+    IncomingShipmentCreate, IncomingShipmentOut, AddressBookEntryCreate,
+    AddressBookEntryUpdate, AddressBookEntryOut
 )
 from .internal_no import next_outgoing_internal_no, next_incoming_internal_no
 
@@ -153,6 +154,14 @@ def incoming_to_out(x: IncomingShipment) -> dict:
         "created_at": x.created_at,
         "updated_at": x.updated_at,
     }
+
+
+def ensure_address_book_table(db: Session):
+    """
+    Backward-compatible guard for installations where the app was deployed
+    before the address-book migration was applied.
+    """
+    AddressBookEntry.__table__.create(bind=db.get_bind(), checkfirst=True)
 
 
 # ======================================================
@@ -357,6 +366,98 @@ def list_cost_centers(db: Session = Depends(get_db), user: CurrentUser = Depends
 def list_carriers(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     rows = db.execute(select(Carrier).where(Carrier.active == True).order_by(Carrier.name)).scalars().all()
     return rows
+
+
+@app.get("/api/address-book", response_model=list[AddressBookEntryOut])
+def list_address_book(
+    q: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    ensure_address_book_table(db)
+    stmt = select(AddressBookEntry).order_by(AddressBookEntry.recipient_name.asc()).limit(limit)
+
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                AddressBookEntry.recipient_name.ilike(like),
+                AddressBookEntry.recipient_email.ilike(like),
+                AddressBookEntry.recipient_phone.ilike(like),
+                AddressBookEntry.recipient_street.ilike(like),
+                AddressBookEntry.recipient_city.ilike(like),
+                AddressBookEntry.recipient_postal_code.ilike(like),
+            )
+        )
+
+    return db.execute(stmt).scalars().all()
+
+
+@app.post("/api/address-book", response_model=AddressBookEntryOut)
+def create_address_book_entry(
+    body: AddressBookEntryCreate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_reception),
+):
+    ensure_address_book_table(db)
+    now = datetime.utcnow()
+    entry = AddressBookEntry(
+        recipient_name=body.recipient_name.strip(),
+        recipient_email=str(body.recipient_email).strip(),
+        recipient_phone=body.recipient_phone.strip(),
+        recipient_street=body.recipient_street.strip(),
+        recipient_country=body.recipient_country.strip().upper(),
+        recipient_postal_code=body.recipient_postal_code.strip(),
+        recipient_city=body.recipient_city.strip(),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@app.put("/api/address-book/{entry_id}", response_model=AddressBookEntryOut)
+def update_address_book_entry(
+    entry_id: str,
+    body: AddressBookEntryUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_reception),
+):
+    ensure_address_book_table(db)
+    entry = db.get(AddressBookEntry, entry_id)
+    if not entry:
+        raise HTTPException(404, "Address book entry not found")
+
+    entry.recipient_name = body.recipient_name.strip()
+    entry.recipient_email = str(body.recipient_email).strip()
+    entry.recipient_phone = body.recipient_phone.strip()
+    entry.recipient_street = body.recipient_street.strip()
+    entry.recipient_country = body.recipient_country.strip().upper()
+    entry.recipient_postal_code = body.recipient_postal_code.strip()
+    entry.recipient_city = body.recipient_city.strip()
+    entry.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@app.delete("/api/address-book/{entry_id}")
+def delete_address_book_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_reception),
+):
+    ensure_address_book_table(db)
+    entry = db.get(AddressBookEntry, entry_id)
+    if not entry:
+        raise HTTPException(404, "Address book entry not found")
+
+    db.delete(entry)
+    db.commit()
+    return {"status": "OK"}
 
 
 @app.post("/api/shipments", response_model=ShipmentOut)
