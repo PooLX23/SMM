@@ -156,6 +156,14 @@ def incoming_to_out(x: IncomingShipment) -> dict:
     }
 
 
+def ensure_address_book_table(db: Session):
+    """
+    Backward-compatible guard for installations where the app was deployed
+    before the address-book migration was applied.
+    """
+    AddressBookEntry.__table__.create(bind=db.get_bind(), checkfirst=True)
+
+
 # ======================================================
 # XLSX EXPORT (recepcja)
 # ======================================================
@@ -367,6 +375,7 @@ def list_address_book(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    ensure_address_book_table(db)
     stmt = select(AddressBookEntry).order_by(AddressBookEntry.recipient_name.asc()).limit(limit)
 
     if q:
@@ -391,6 +400,7 @@ def create_address_book_entry(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_reception),
 ):
+    ensure_address_book_table(db)
     now = datetime.utcnow()
     entry = AddressBookEntry(
         recipient_name=body.recipient_name.strip(),
@@ -416,6 +426,7 @@ def update_address_book_entry(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_reception),
 ):
+    ensure_address_book_table(db)
     entry = db.get(AddressBookEntry, entry_id)
     if not entry:
         raise HTTPException(404, "Address book entry not found")
@@ -439,6 +450,7 @@ def delete_address_book_entry(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_reception),
 ):
+    ensure_address_book_table(db)
     entry = db.get(AddressBookEntry, entry_id)
     if not entry:
         raise HTTPException(404, "Address book entry not found")
