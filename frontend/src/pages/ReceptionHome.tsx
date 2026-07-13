@@ -28,10 +28,25 @@ import {
 import { useMsal } from "@azure/msal-react";
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import AppShell from "../components/AppShell";
-import { apiGetJson, apiPostJson, fetchWithAuth } from "../api/apiClient";
+import PostalCityFields from "../components/PostalCityFields";
+import { isPostalCodeValid } from "../utils/postalAddress";
+import { apiDelete, apiGetJson, apiPostJson, fetchWithAuth } from "../api/apiClient";
 
 type SimpleDictItem = { id: string; name: string };
 type CostCenterOut = { id: string; code: string; name: string; active: boolean };
+
+type AddressBookEntry = {
+  id: string;
+  recipient_name: string;
+  recipient_email: string;
+  recipient_phone: string;
+  recipient_street: string;
+  recipient_country: string;
+  recipient_postal_code: string;
+  recipient_city: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 type ShipmentOut = {
   id: string;
@@ -158,7 +173,7 @@ export default function ReceptionHome() {
   // ==========================
   // TABS
   // ==========================
-  const [tab, setTab] = useState<0 | 1>(0);
+  const [tab, setTab] = useState<0 | 1 | 2>(0);
 
   // ==========================
   // CREATE OUTGOING DIALOG
@@ -1034,6 +1049,7 @@ export default function ReceptionHome() {
             >
               <Tab label="Outgoing (Wychodzące)" value={0} />
               <Tab label="Incoming (Przychodzące)" value={1} />
+              <Tab label="Książka adresowa" value={2} />
             </Tabs>
 
             <Box sx={{ flex: "0 0 auto" }}>
@@ -2062,6 +2078,8 @@ export default function ReceptionHome() {
                   </Box>
                 </Stack>
               )}
+
+              {tab === 2 && <AddressBookManager />}
             </Box>
           </Stack>
         </CardContent>
@@ -2116,6 +2134,8 @@ function CreateShipmentDialog({
   const { instance, accounts } = useMsal();
 
   const [costCenters, setCostCenters] = useState<CostCenterOut[]>([]);
+  const [addressBook, setAddressBook] = useState<AddressBookEntry[]>([]);
+  const [selectedAddressBookEntry, setSelectedAddressBookEntry] = useState<AddressBookEntry | null>(null);
   const [ccLoading, setCcLoading] = useState(false);
 
   const [recipientName, setRecipientName] = useState("");
@@ -2149,6 +2169,7 @@ function CreateShipmentDialog({
     setVin("");
     setPlateNo("");
     setCostCenterId("");
+    setSelectedAddressBookEntry(null);
     setErr(null);
   };
 
@@ -2161,8 +2182,12 @@ function CreateShipmentDialog({
       setCcLoading(true);
       setErr(null);
       try {
-        const data = await apiGetJson<CostCenterOut[]>(instance, accounts, "/cost-centers");
-        setCostCenters(data);
+        const [ccData, addressData] = await Promise.all([
+          apiGetJson<CostCenterOut[]>(instance, accounts, "/cost-centers"),
+          apiGetJson<AddressBookEntry[]>(instance, accounts, "/address-book?limit=500"),
+        ]);
+        setCostCenters(ccData);
+        setAddressBook(addressData);
       } catch (e: any) {
         setErr(e?.message ?? "Nie udało się pobrać centrów kosztowych.");
       } finally {
@@ -2172,8 +2197,21 @@ function CreateShipmentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+
+  const applyAddressBookEntry = (entry: AddressBookEntry | null) => {
+    setSelectedAddressBookEntry(entry);
+    if (!entry) return;
+    setRecipientName(entry.recipient_name);
+    setRecipientEmail(entry.recipient_email);
+    setRecipientPhone(entry.recipient_phone);
+    setRecipientStreet(entry.recipient_street);
+    setRecipientCountry(entry.recipient_country || "PL");
+    setRecipientPostal(entry.recipient_postal_code);
+    setRecipientCity(entry.recipient_city);
+  };
+
   const emailOk = recipientEmail.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
-  const postalOk = recipientPostal.length === 0 || /^\d{2}-\d{3}$/.test(recipientPostal);
+  const postalOk = isPostalCodeValid(recipientCountry, recipientPostal);
   const vinOk = vin.length === 0 || vin.trim().length === 17;
 
   const canSubmit =
@@ -2223,7 +2261,22 @@ function CreateShipmentDialog({
       <DialogContent dividers>
         <Stack spacing={2}>
           {err && <Alert severity="error">{err}</Alert>}
-          {ccLoading && <Alert severity="info">Ładowanie centrów kosztowych…</Alert>}
+          {ccLoading && <Alert severity="info">Ładowanie centrów kosztowych i książki adresowej…</Alert>}
+
+          <Autocomplete
+            options={addressBook}
+            value={selectedAddressBookEntry}
+            onChange={(_, value) => applyAddressBookEntry(value)}
+            getOptionLabel={(entry) => `${entry.recipient_name} — ${entry.recipient_city}, ${entry.recipient_street}`}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Wybierz adresata z książki adresowej"
+                helperText="Po wyborze dane adresata zostaną uzupełnione, ale nadal możesz je ręcznie zmienić."
+              />
+            )}
+          />
 
           <TextField
             label="Adresat – nazwisko / nazwa"
@@ -2253,32 +2306,19 @@ function CreateShipmentDialog({
             required
           />
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Kod pocztowy"
-              value={recipientPostal}
-              onChange={(e) => setRecipientPostal(e.target.value)}
-              required
-              error={!postalOk}
-              helperText={!postalOk ? "Format: 00-000" : " "}
-              fullWidth
-            />
-            <TextField
-              label="Miasto"
-              value={recipientCity}
-              onChange={(e) => setRecipientCity(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Kraj"
-              value={recipientCountry}
-              onChange={(e) => setRecipientCountry(e.target.value)}
-              inputProps={{ maxLength: 2 }}
-              required
-              fullWidth
-            />
-          </Stack>
+          <PostalCityFields
+            country={recipientCountry}
+            onCountryChange={(value) => {
+              setRecipientCountry(value);
+              setRecipientPostal("");
+              setRecipientCity("");
+            }}
+            postalCode={recipientPostal}
+            onPostalCodeChange={setRecipientPostal}
+            city={recipientCity}
+            onCityChange={setRecipientCity}
+            postalCodeValid={postalOk}
+          />
 
           <TextField
             label="Zawartość przesyłki"
@@ -2338,5 +2378,178 @@ function CreateShipmentDialog({
         </Button>
       </DialogActions>
     </Dialog>
+  );
+}
+function AddressBookManager() {
+  const { instance, accounts } = useMsal();
+  const [items, setItems] = useState<AddressBookEntry[]>([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AddressBookEntry | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [recipientStreet, setRecipientStreet] = useState("");
+  const [recipientCountry, setRecipientCountry] = useState("PL");
+  const [recipientPostal, setRecipientPostal] = useState("");
+  const [recipientCity, setRecipientCity] = useState("");
+
+  const emailOk = recipientEmail.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
+  const postalOk = isPostalCodeValid(recipientCountry, recipientPostal);
+  const canSave = recipientName.trim().length >= 2 && recipientEmail.trim().length >= 5 && emailOk && recipientPhone.trim().length >= 3 && recipientStreet.trim().length >= 3 && recipientCountry.trim().length === 2 && recipientPostal.trim().length >= 2 && postalOk && recipientCity.trim().length >= 2;
+
+  const resetForm = () => {
+    setEditing(null);
+    setRecipientName("");
+    setRecipientEmail("");
+    setRecipientPhone("");
+    setRecipientStreet("");
+    setRecipientCountry("PL");
+    setRecipientPostal("");
+    setRecipientCity("");
+  };
+
+  const fillForm = (entry: AddressBookEntry) => {
+    setEditing(entry);
+    setRecipientName(entry.recipient_name);
+    setRecipientEmail(entry.recipient_email);
+    setRecipientPhone(entry.recipient_phone);
+    setRecipientStreet(entry.recipient_street);
+    setRecipientCountry(entry.recipient_country || "PL");
+    setRecipientPostal(entry.recipient_postal_code);
+    setRecipientCity(entry.recipient_city);
+    setOpen(true);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "500");
+      if (q.trim()) params.set("q", q.trim());
+      const data = await apiGetJson<AddressBookEntry[]>(instance, accounts, `/address-book?${params.toString()}`);
+      setItems(data);
+    } catch (e: unknown) {
+      setErr(errText(e, "Nie udało się pobrać książki adresowej."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setErr(null);
+    setInfo(null);
+    const payload = {
+      recipient_name: recipientName.trim(),
+      recipient_email: recipientEmail.trim(),
+      recipient_phone: recipientPhone.trim(),
+      recipient_street: recipientStreet.trim(),
+      recipient_country: recipientCountry.trim().toUpperCase(),
+      recipient_postal_code: recipientPostal.trim(),
+      recipient_city: recipientCity.trim(),
+    };
+
+    try {
+      if (editing) {
+        const resp = await fetchWithAuth(instance, accounts, `/address-book/${editing.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const updated = (await resp.json()) as AddressBookEntry;
+        setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+        setInfo("✅ Zaktualizowano wpis w książce adresowej.");
+      } else {
+        const created = await apiPostJson<AddressBookEntry, typeof payload>(instance, accounts, "/address-book", payload);
+        setItems((prev) => [created, ...prev]);
+        setInfo("✅ Dodano wpis do książki adresowej.");
+      }
+      setOpen(false);
+      resetForm();
+    } catch (e: unknown) {
+      setErr(errText(e, "Nie udało się zapisać wpisu."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (entry: AddressBookEntry) => {
+    if (!window.confirm(`Usunąć wpis: ${entry.recipient_name}?`)) return;
+    setErr(null);
+    setInfo(null);
+    try {
+      await apiDelete(instance, accounts, `/address-book/${entry.id}`);
+      setItems((prev) => prev.filter((x) => x.id !== entry.id));
+      setInfo("✅ Usunięto wpis z książki adresowej.");
+    } catch (e: unknown) {
+      setErr(errText(e, "Nie udało się usunąć wpisu."));
+    }
+  };
+
+  return (
+    <Stack spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems="center">
+        <TextField label="Szukaj w książce adresowej" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") load(); }} fullWidth InputLabelProps={{ sx: { color: "rgba(255,255,255,0.75)" } }} sx={{ "& .MuiInputBase-input": { color: "rgba(255,255,255,0.92)" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.18)" } }} />
+        <Button variant="outlined" onClick={load} disabled={loading} sx={{ minWidth: 120 }}>Filtruj</Button>
+        <Button variant="contained" onClick={() => { resetForm(); setOpen(true); }} sx={{ minWidth: 180 }}>Dodaj adresata</Button>
+      </Stack>
+
+      {info && <Alert severity="success">{info}</Alert>}
+      {err && <Alert severity="error">{err}</Alert>}
+      {loading && <Alert severity="info">Ładowanie książki adresowej…</Alert>}
+
+      <Box sx={{ overflow: "auto", minHeight: 0, pr: 0.5 }}>
+        <Stack spacing={1}>
+          {items.map((entry) => (
+            <Card key={entry.id} elevation={0} sx={{ borderRadius: 3, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.05)" }}>
+              <CardContent sx={{ p: 2 }}>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} justifyContent="space-between">
+                  <Box>
+                    <Typography sx={{ fontWeight: 900, color: "rgba(255,255,255,0.94)" }}>{entry.recipient_name}</Typography>
+                    <Typography sx={{ color: "rgba(255,255,255,0.82)", fontSize: 13 }}>{entry.recipient_email} • {entry.recipient_phone}</Typography>
+                    <Typography sx={{ color: "rgba(255,255,255,0.82)", fontSize: 13 }}>{entry.recipient_street}, {entry.recipient_postal_code} {entry.recipient_city}, {entry.recipient_country}</Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button variant="outlined" size="small" onClick={() => fillForm(entry)}>Edytuj</Button>
+                    <Button variant="outlined" color="error" size="small" onClick={() => remove(entry)}>Usuń</Button>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          ))}
+          {!loading && items.length === 0 && <Alert severity="info">Brak wpisów w książce adresowej.</Alert>}
+        </Stack>
+      </Box>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900 }}>{editing ? "Edytuj adresata" : "Dodaj adresata"}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <TextField label="Adresat – nazwisko / nazwa" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required />
+            <TextField label="Adresat – adres mailowy" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} required error={!emailOk} helperText={!emailOk ? "Nieprawidłowy adres e-mail" : " "} />
+            <TextField label="Adresat – numer kontaktowy" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} required />
+            <TextField label="Ulica i numer" value={recipientStreet} onChange={(e) => setRecipientStreet(e.target.value)} required />
+            <PostalCityFields country={recipientCountry} onCountryChange={(value) => { setRecipientCountry(value); setRecipientPostal(""); setRecipientCity(""); }} postalCode={recipientPostal} onPostalCodeChange={setRecipientPostal} city={recipientCity} onCityChange={setRecipientCity} postalCodeValid={postalOk} />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)} variant="outlined">Anuluj</Button>
+          <Button onClick={save} variant="contained" disabled={!canSave || saving}>{saving ? <CircularProgress size={22} /> : "Zapisz"}</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }

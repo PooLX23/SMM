@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -25,6 +26,8 @@ import {
   Tabs,
 } from "@mui/material";
 import AppShell from "../components/AppShell";
+import PostalCityFields from "../components/PostalCityFields";
+import { isPostalCodeValid } from "../utils/postalAddress";
 import { useMsal } from "@azure/msal-react";
 import { apiGetJson, apiPostJson } from "../api/apiClient";
 
@@ -87,6 +90,19 @@ type IncomingShipmentOut = {
 };
 
 type CostCenterOut = { id: string; code: string; name: string; active: boolean };
+
+type AddressBookEntry = {
+  id: string;
+  recipient_name: string;
+  recipient_email: string;
+  recipient_phone: string;
+  recipient_street: string;
+  recipient_country: string;
+  recipient_postal_code: string;
+  recipient_city: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 function statusLabel(status: string) {
   switch (status) {
@@ -984,6 +1000,8 @@ function CreateShipmentDialog({
   const { instance, accounts } = useMsal();
 
   const [costCenters, setCostCenters] = useState<CostCenterOut[]>([]);
+  const [addressBook, setAddressBook] = useState<AddressBookEntry[]>([]);
+  const [selectedAddressBookEntry, setSelectedAddressBookEntry] = useState<AddressBookEntry | null>(null);
   const [ccLoading, setCcLoading] = useState(false);
 
   const [recipientName, setRecipientName] = useState("");
@@ -1021,6 +1039,7 @@ function CreateShipmentDialog({
     setPlateNo("");
 
     setCostCenterId("");
+    setSelectedAddressBookEntry(null);
 
     setErr(null);
   };
@@ -1034,8 +1053,12 @@ function CreateShipmentDialog({
       setCcLoading(true);
       setErr(null);
       try {
-        const data = await apiGetJson<CostCenterOut[]>(instance, accounts, "/cost-centers");
-        setCostCenters(data);
+        const [ccData, addressData] = await Promise.all([
+          apiGetJson<CostCenterOut[]>(instance, accounts, "/cost-centers"),
+          apiGetJson<AddressBookEntry[]>(instance, accounts, "/address-book?limit=500"),
+        ]);
+        setCostCenters(ccData);
+        setAddressBook(addressData);
       } catch (e: any) {
         setErr(e?.message ?? "Nie udało się pobrać centrów kosztowych.");
       } finally {
@@ -1045,8 +1068,21 @@ function CreateShipmentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+
+  const applyAddressBookEntry = (entry: AddressBookEntry | null) => {
+    setSelectedAddressBookEntry(entry);
+    if (!entry) return;
+    setRecipientName(entry.recipient_name);
+    setRecipientEmail(entry.recipient_email);
+    setRecipientPhone(entry.recipient_phone);
+    setRecipientStreet(entry.recipient_street);
+    setRecipientCountry(entry.recipient_country || "PL");
+    setRecipientPostal(entry.recipient_postal_code);
+    setRecipientCity(entry.recipient_city);
+  };
+
   const emailOk = recipientEmail.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail);
-  const postalOk = recipientPostal.length === 0 || /^\d{2}-\d{3}$/.test(recipientPostal);
+  const postalOk = isPostalCodeValid(recipientCountry, recipientPostal);
   const vinOk = vin.length === 0 || vin.trim().length === 17;
 
   const canSubmit =
@@ -1096,7 +1132,22 @@ function CreateShipmentDialog({
       <DialogContent dividers>
         <Stack spacing={2}>
           {err && <Alert severity="error">{err}</Alert>}
-          {ccLoading && <Alert severity="info">Ładowanie centrów kosztowych…</Alert>}
+          {ccLoading && <Alert severity="info">Ładowanie centrów kosztowych i książki adresowej…</Alert>}
+
+          <Autocomplete
+            options={addressBook}
+            value={selectedAddressBookEntry}
+            onChange={(_, value) => applyAddressBookEntry(value)}
+            getOptionLabel={(entry) => `${entry.recipient_name} — ${entry.recipient_city}, ${entry.recipient_street}`}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Wybierz adresata z książki adresowej"
+                helperText="Po wyborze dane adresata zostaną uzupełnione, ale nadal możesz je ręcznie zmienić."
+              />
+            )}
+          />
 
           <TextField
             label="Adresat – nazwisko / nazwa"
@@ -1126,32 +1177,19 @@ function CreateShipmentDialog({
             required
           />
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              label="Kod pocztowy"
-              value={recipientPostal}
-              onChange={(e) => setRecipientPostal(e.target.value)}
-              required
-              error={!postalOk}
-              helperText={!postalOk ? "Format: 00-000" : " "}
-              fullWidth
-            />
-            <TextField
-              label="Miasto"
-              value={recipientCity}
-              onChange={(e) => setRecipientCity(e.target.value)}
-              required
-              fullWidth
-            />
-            <TextField
-              label="Kraj"
-              value={recipientCountry}
-              onChange={(e) => setRecipientCountry(e.target.value)}
-              inputProps={{ maxLength: 2 }}
-              required
-              fullWidth
-            />
-          </Stack>
+          <PostalCityFields
+            country={recipientCountry}
+            onCountryChange={(value) => {
+              setRecipientCountry(value);
+              setRecipientPostal("");
+              setRecipientCity("");
+            }}
+            postalCode={recipientPostal}
+            onPostalCodeChange={setRecipientPostal}
+            city={recipientCity}
+            onCityChange={setRecipientCity}
+            postalCodeValid={postalOk}
+          />
 
           <TextField
             label="Zawartość przesyłki"
