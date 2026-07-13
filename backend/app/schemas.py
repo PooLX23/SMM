@@ -87,6 +87,33 @@ class SimpleDictItem(BaseModel):
         from_attributes = True
 
 
+class AddressBookEntryBase(BaseModel):
+    recipient_name: str = Field(min_length=2, max_length=200)
+    recipient_email: EmailStr
+    recipient_phone: str = Field(min_length=3, max_length=50)
+    recipient_street: str = Field(min_length=3, max_length=200)
+    recipient_country: str = Field(default="PL", min_length=2, max_length=2)
+    recipient_postal_code: str = Field(min_length=2, max_length=32)
+    recipient_city: str = Field(min_length=2, max_length=120)
+
+
+class AddressBookEntryCreate(AddressBookEntryBase):
+    pass
+
+
+class AddressBookEntryUpdate(AddressBookEntryBase):
+    pass
+
+
+class AddressBookEntryOut(AddressBookEntryBase):
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # =========================
 # INCOMING (Nowe: paczki przychodzące)
 # =========================
