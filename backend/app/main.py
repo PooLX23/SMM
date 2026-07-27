@@ -236,6 +236,10 @@ def export_outgoing_xlsx(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),
@@ -560,6 +564,10 @@ def search_shipments(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),
@@ -599,6 +607,10 @@ def my_shipments(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),

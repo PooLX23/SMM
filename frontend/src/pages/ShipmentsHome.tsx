@@ -443,7 +443,7 @@ export default function ShipmentsHome() {
                     <Stack spacing={1.2} sx={{ minHeight: 0, height: "100%" }}>
                       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems="stretch">
                         <TextField
-                          label="Szukaj (numer, adresat, email, telefon, adres)"
+                          label="Szukaj (numer, adresat, utworzył, rejestracja, VIN)"
                           value={q}
                           onChange={(e) => setQ(e.target.value)}
                           onKeyDown={(e) => {
