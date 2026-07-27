@@ -84,6 +84,7 @@ def shipment_to_out(sh: Shipment, db: Session | None = None) -> dict:
       - czasy statusów z historii ShipmentEvent
     """
     cc = sh.cost_center
+    carrier = sh.carrier
     event_times = _shipment_event_times(db, sh.id) if db is not None else {}
     return {
         "id": str(sh.id),
@@ -111,6 +112,7 @@ def shipment_to_out(sh: Shipment, db: Session | None = None) -> dict:
         "cost_center_name": (cc.name if cc else None),
 
         "carrier_id": str(sh.carrier_id) if sh.carrier_id else None,
+        "carrier_name": carrier.name if carrier else None,
         "carrier_tracking_no": sh.carrier_tracking_no,
 
         "received_at": sh.received_at,
@@ -236,6 +238,10 @@ def export_outgoing_xlsx(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),
@@ -505,7 +511,7 @@ def create_shipment(
         sh = (
             db.execute(
                 select(Shipment)
-                .options(selectinload(Shipment.cost_center))
+                .options(selectinload(Shipment.cost_center), selectinload(Shipment.carrier))
                 .where(Shipment.id == sh.id)
             )
             .scalar_one()
@@ -524,7 +530,7 @@ def create_shipment(
 def get_by_internal(internal_no: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     stmt = (
         select(Shipment)
-        .options(selectinload(Shipment.cost_center))
+        .options(selectinload(Shipment.cost_center), selectinload(Shipment.carrier))
         .where(Shipment.internal_no == internal_no)
     )
     sh = db.execute(stmt).scalar_one_or_none()
@@ -543,7 +549,7 @@ def search_shipments(
 ):
     stmt = (
         select(Shipment)
-        .options(selectinload(Shipment.cost_center))
+        .options(selectinload(Shipment.cost_center), selectinload(Shipment.carrier))
         .order_by(Shipment.created_at.desc())
         .limit(limit)
     )
@@ -560,6 +566,10 @@ def search_shipments(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),
@@ -581,7 +591,7 @@ def my_shipments(
 ):
     stmt = (
         select(Shipment)
-        .options(selectinload(Shipment.cost_center))
+        .options(selectinload(Shipment.cost_center), selectinload(Shipment.carrier))
         .where(Shipment.requested_by_upn == user.upn)
         .order_by(Shipment.created_at.desc())
         .limit(limit)
@@ -599,6 +609,10 @@ def my_shipments(
                 Shipment.recipient_email.ilike(like),
                 Shipment.recipient_phone.ilike(like),
                 Shipment.carrier_tracking_no.ilike(like),
+                Shipment.requested_by_name.ilike(like),
+                Shipment.requested_by_upn.ilike(like),
+                Shipment.plate_no.ilike(like),
+                Shipment.vin.ilike(like),
 
                 Shipment.recipient_street.ilike(like),
                 Shipment.recipient_city.ilike(like),

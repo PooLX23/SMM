@@ -54,6 +54,7 @@ class ShipmentOut(BaseModel):
     cost_center_name: str | None = None
 
     carrier_id: uuid.UUID | None
+    carrier_name: str | None = None
     carrier_tracking_no: str | None
 
     received_at: datetime | None
