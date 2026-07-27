@@ -58,6 +58,7 @@ type ShipmentOut = {
   requested_by_name?: string | null;
 
   carrier_id?: string | null;
+  carrier_name?: string | null;
   carrier_tracking_no?: string | null;
 
   received_at?: string | null;
@@ -665,6 +666,18 @@ export default function ShipmentsHome() {
                             </Typography>
                             <Typography sx={{ whiteSpace: "pre-wrap", color: "rgba(255,255,255,0.90)" }}>
                               {selected.contents}
+                            </Typography>
+                          </Box>
+
+                          <Box>
+                            <Typography sx={{ opacity: 0.75, fontSize: 13, color: "rgba(255,255,255,0.82)" }}>
+                              Przesyłka kurierska
+                            </Typography>
+                            <Typography sx={{ color: "rgba(255,255,255,0.90)" }}>
+                              Firma kurierska: <b>{selected.carrier_name || "—"}</b>
+                            </Typography>
+                            <Typography sx={{ color: "rgba(255,255,255,0.90)" }}>
+                              Numer trackingowy: <b>{selected.carrier_tracking_no || "—"}</b>
                             </Typography>
                           </Box>
 
