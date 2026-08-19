@@ -46,7 +46,7 @@ export default function NewShipment() {
     recipientPhone.trim().length >= 3 &&
     recipientStreet.trim().length >= 3 &&
     recipientCity.trim().length >= 2 &&
-    recipientPostal.trim().length >= 5 &&
+    recipientPostal.trim().length > 0 &&
     postalOk &&
     recipientCountry.trim().length === 2 &&
     contents.trim().length >= 3 &&
