@@ -1,4 +1,6 @@
+import re
 from dataclasses import dataclass
+
 from fastapi import Depends, Header, HTTPException, Request
 from .db import SessionLocal
 from .config import settings
@@ -23,6 +25,40 @@ def get_db():
 _JWKS_CLIENT = None
 _JWKS_TENANT = None
 
+_CLIENT_ID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _get_valid_audiences(configured_audience: str | None) -> list[str]:
+    """Return explicitly configured API audiences and safe client-ID aliases.
+
+    Entra can emit either the API application (client) ID or ``api://<client-id>``
+    as ``aud``, depending on the access-token version and App ID URI. Supporting
+    both forms for the same GUID avoids deployment-specific mismatches without
+    accepting tokens issued for an unrelated application.
+    """
+    audiences: list[str] = []
+    for value in (configured_audience or "").split(","):
+        audience = value.strip()
+        if not audience:
+            continue
+
+        aliases = [audience]
+        if _CLIENT_ID_RE.fullmatch(audience):
+            aliases.append(f"api://{audience}")
+        elif audience.lower().startswith("api://"):
+            client_id = audience[6:]
+            if _CLIENT_ID_RE.fullmatch(client_id):
+                aliases.append(client_id)
+
+        for alias in aliases:
+            if alias not in audiences:
+                audiences.append(alias)
+
+    return audiences
+
 def _get_jwks_client():
     global _JWKS_CLIENT, _JWKS_TENANT
     if _JWKS_CLIENT and _JWKS_TENANT == settings.ENTRA_TENANT_ID:
@@ -35,7 +71,8 @@ def _get_jwks_client():
     return _JWKS_CLIENT
 
 def _decode(token: str) -> dict:
-    if not settings.ENTRA_AUDIENCE:
+    valid_audiences = _get_valid_audiences(settings.ENTRA_AUDIENCE)
+    if not valid_audiences:
         raise HTTPException(500, "ENTRA_AUDIENCE is not set")
 
     jwks_client = _get_jwks_client()
@@ -46,7 +83,7 @@ def _decode(token: str) -> dict:
             token,
             signing_key,
             algorithms=["RS256"],
-            audience=settings.ENTRA_AUDIENCE,
+            audience=valid_audiences,
             options={"require": ["exp", "iat"]},
         )
     except jwt.ExpiredSignatureError:
